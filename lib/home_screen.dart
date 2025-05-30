@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'forecast_screen.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,7 +21,54 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _initLocationAndFetch();
+  }
+
+  Future<void> _initLocationAndFetch() async {
+    try {
+      Position position = await _determinePosition();
+      List<Placemark> placemark = await placemarkFromCoordinates(position.latitude, position.longitude);
+      if (placemark.isNotEmpty) {
+        String? foundCity = placemark[0].locality;
+        if (foundCity == null || foundCity.isEmpty) {
+          foundCity = placemark[0].administrativeArea;
+        }
+        if (foundCity == null || foundCity.isEmpty) {
+          foundCity = placemark[0].country;
+        }
+        setState(() {
+          city = foundCity ?? 'Urdaneta';
+        });
+      }
+    } catch (e) {
+      // fallback to default city
+      setState(() {
+        city = 'Urdaneta';
+      });
+    }
     fetchWeather();
+  }
+
+  Future<Position> _determinePosition() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      throw Exception('Location services are disabled.');
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        throw Exception('Location permissions are denied');
+      }
+    }
+    if (permission == LocationPermission.deniedForever) {
+      throw Exception('Location permissions are permanently denied.');
+    }
+    return await Geolocator.getCurrentPosition();
   }
 
   Future<void> fetchWeather() async {
@@ -49,6 +98,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 city = val;
                 fetchWeather();
               },
+            ),
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              icon: Icon(Icons.my_location),
+              label: Text('Use My Location'),
+              onPressed: _initLocationAndFetch,
             ),
             const SizedBox(height: 20),
             if (isLoading)
